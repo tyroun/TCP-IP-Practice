@@ -54,7 +54,7 @@ struct net_operation *parse_option(int argc,char **argv)
 				break;		
 			case 'p':
 				l_opt_arg=optarg;
-				op.port=atoi(*l_opt_arg);
+				op.port=atoi(l_opt_arg);
 				break;		
 			case 'B':
 				if(isTcpFlag)
