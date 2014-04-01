@@ -1,12 +1,13 @@
 CUR_PATH=$(shell pwd)
-CCFLAGS=-I/home/pi/nettool/unpv13e/lib
-LIBS=../unpv13e/libunp.a -lpthread
-PROGS=echo_srv echo_cli chat_srv chat_cli proxy_srv proxy_cli 
+CCFLAGS=
+LIBS=-lpthread
+PROGS=echo_srv #echo_cli chat_srv chat_cli proxy_srv proxy_cli 
 
 all:	$(PROGS)
+common = common.o echo_logic.o tcp_drv.o udp_drv.o
 
-echo_srv: echo_srv.o
-	cc -g $(CCFLAGS) -o $@ echo_srv.o $(LIBS)
+echo_srv: $(common) echo_srv.o 
+	cc -g $(CCFLAGS) -o $@ $(common) echo_srv.o $(LIBS)
 
 echo_cli: echo_cli.o
 	cc -g $(CCFLAGS) -o $@ echo_cli.o $(LIBS)
