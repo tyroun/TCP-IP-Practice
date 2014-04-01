@@ -51,11 +51,11 @@ void tcp_base_loop(int sock_fd)
 			perror("listen error");
 			exit(1);
 	}
-
+	printf("Now start to wait for client\n");
 	for(;;){
 		clilen=sizeof(cli_addr);
-		conn_fd=accept(listen_fd,(SA *)&cli_addr,&clilen);
-		if(conn_fd){
+		conn_fd=accept(sock_fd,(SA *)&cli_addr,&clilen);
+		if(conn_fd<0){
 			if(errno==EINTR)
 				continue;
 			else{
@@ -65,7 +65,7 @@ void tcp_base_loop(int sock_fd)
 		}
 		if ( (child_pid=fork())==0  ) {
 			// in child
-			close(listen_fd);
+			close(sock_fd);
 			base_echo_child(conn_fd);
 			exit(0);
 		}

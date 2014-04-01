@@ -5,7 +5,7 @@
  *    parse Option start
 *************************************************************************/
 static char	*l_opt_arg;
-static char* const short_options = "htupBMUSAFT:";
+static char* const short_options = "p:htuBMUSAFT";
 static struct net_operation op={
 	0,0,0,0
 };
@@ -31,7 +31,7 @@ static void print_option(char **argv)
 	int i,size;
 	printf("%s support follow option: -%s\n",argv[0],short_options);
 	size=sizeof(long_options)/sizeof(long_options[0]);
-	for(i=0;i<size;i++)
+	for(i=0;i<size-1;i++)
 		printf("-%c :  --%s\n",long_options[i].val,long_options[i].name);
 }
 
@@ -39,7 +39,7 @@ struct net_operation *parse_option(int argc,char **argv)
 {
 	int c;
 	int isTcpFlag=0;
-	while((c=getopt_long(argc,argv,short_options,long_options,NULL))!=1){
+	while((c=getopt_long(argc,argv,short_options,long_options,NULL))!=-1){
 			switch(c){
 			case 'h':
 				print_option(argv);
@@ -53,8 +53,13 @@ struct net_operation *parse_option(int argc,char **argv)
 				isTcpFlag=0;
 				break;		
 			case 'p':
+				if(!optarg){
+					printf("Please input port number\n");
+					return 0;
+				}
 				l_opt_arg=optarg;
 				op.port=atoi(l_opt_arg);
+				printf("port=%d\n",op.port);
 				break;		
 			case 'B':
 				if(isTcpFlag)

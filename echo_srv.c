@@ -6,7 +6,7 @@ int main(int argc, char **argv)
 	int sock_fd;
 	op=parse_option(argc,argv);
 	if(!op||(!op->init)){
-		printf("Unsupport Option\n");
+//		printf("Unsupport Option\n");
 		exit(1);
 	}
 	sock_fd=op->init(op->port);
