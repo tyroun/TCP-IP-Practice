@@ -24,6 +24,8 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <signal.h>
+#include <sys/resource.h>
 
 struct net_operation{
 	int (*init)(short port);
@@ -36,6 +38,7 @@ struct net_operation *parse_option(int argc,char **argv);
 
 void tcp_base_loop(int sock_fd);
 int tcp_init(short port);
+void tcp_select_loop(int sock_fd);
 
 
 void udp_base_loop(int sock_fd);

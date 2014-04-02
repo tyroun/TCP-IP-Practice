@@ -5,7 +5,7 @@
  *    parse Option start
 *************************************************************************/
 static char	*l_opt_arg;
-static char* const short_options = "p:htuBMUSAFT";
+static char* const short_options = "p:htuBMEUSAFT";
 static struct net_operation op={
 	0,0,0,0
 };
@@ -17,6 +17,7 @@ static struct option long_options[]={
 	/*the way server act*/
 	{"Base",0,NULL,'B'},
 	{"Multiply",0,NULL,'M'},
+	{"Epoll",0,NULL,'E'},
 	{"Unblock",0,NULL,'U'},
 	{"Signal",0,NULL,'S'},
 	{"Ansy",0,NULL,'A'},
@@ -68,7 +69,10 @@ struct net_operation *parse_option(int argc,char **argv)
 					op.mainloop=udp_base_loop;
 				break;		
 			case 'M':
-				break;		
+				op.mainloop=tcp_select_loop;
+				break;	
+			case 'E':
+				break;
 			case 'U':
 				break;		
 			case 'S':

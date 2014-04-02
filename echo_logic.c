@@ -34,3 +34,18 @@ again:
 	}
 }
 
+int echo_single_slect(int sock_fd)
+{
+	ssize_t n;
+	char buf[MAXLINE];
+
+	if((n=read(sock_fd,buf,MAXLINE))>0){	
+		write(sock_fd,buf,n);
+		return n;
+	}
+	else{
+		return 0;
+	}
+}
+
+
