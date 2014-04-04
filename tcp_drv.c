@@ -18,6 +18,8 @@
 #include "common.h"
 #include <sys/select.h>
 #include <sys/time.h>
+#include <sys/epoll.h>
+#include <fcntl.h>
 
 #define SA const struct sockaddr
 
@@ -49,7 +51,7 @@ void tcp_base_loop(int sock_fd)
 	pid_t child_pid;
 	struct sockaddr_in cli_addr;
 	socklen_t clilen;
-	listen_fd=listen(sock_fd,100);
+	listen_fd=listen(sock_fd,500);
 	if(listen_fd<0){
 			perror("listen error");
 			exit(1);
@@ -87,7 +89,9 @@ void tcp_select_loop(int sock_fd)
 	int i;
 	int client_fd[FD_SETSIZE];
 
-	listen_fd=listen(sock_fd,10);
+	fcntl(sock_fd,F_SETFL,fcntl(sock_fd,F_GETFL)|O_NONBLOCK);/*Important!! make sure accept after select is noblock */
+
+	listen_fd=listen(sock_fd,500);
 	if(listen_fd<0){
 			perror("listen error");
 			exit(1);
@@ -141,4 +145,36 @@ void tcp_select_loop(int sock_fd)
 		}
 	}
 }
+
+/****************************************************************************************************
+ * 	epoll way is quit differnt, just start below
+****************************************************************************************************/
+#define MAX_EVENTS 1024
+
+void tcp_epoll_loop(int sock_fd)
+{
+	int listen_fd,conn_fd;
+	struct sockaddr_in cli_addr;
+	socklen_t clilen;
+	/*val used for epoll*/	
+	int epfd;
+	int i;
+
+	fcntl(sock_fd,F_SETFL,fcntl(sock_fd,F_GETFL)|O_NONBLOCK);/*Important!! make sure accept after select is noblock */
+	listen_fd=listen(sock_fd,1024);
+	if(listen_fd<0){
+			perror("listen error");
+			exit(1);
+	}
+	printf("Now start to wait for client\n");
+
+	epfd= epoll_create(MAX_EVENTS);
+
+	for(;;){
+	}
+}
+
+/****************************************************************************************************
+ * 	epoll way is quit differnt, end now 
+****************************************************************************************************/
 
