@@ -21,7 +21,7 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 
-#define SA const struct sockaddr
+#define SA  struct sockaddr
 
 int tcp_init(short port)
 {
@@ -89,14 +89,14 @@ void tcp_select_loop(int sock_fd)
 	int i;
 	int client_fd[FD_SETSIZE];
 
-	fcntl(sock_fd,F_SETFL,fcntl(sock_fd,F_GETFL)|O_NONBLOCK);/*Important!! make sure accept after select is noblock */
+	fcntl(sock_fd,F_SETFL,fcntl(sock_fd,F_GETFL)|O_NONBLOCK);/*important!! make sure accept after select is noblock */
 
 	listen_fd=listen(sock_fd,500);
 	if(listen_fd<0){
 			perror("listen error");
 			exit(1);
 	}
-	printf("Now start to wait for client\n");
+	printf("now start to wait for client\n");
 
 	FD_ZERO(&allset);	
 
@@ -114,6 +114,18 @@ void tcp_select_loop(int sock_fd)
 			/*accept new connect*/
 			clilen=sizeof(cli_addr);
 			conn_fd=accept(sock_fd,(SA *)&cli_addr,&clilen);
+			if(conn_fd<0){
+				//ignore following error
+				if((errno==EWOULDBLOCK)||/*berkeley:client disconnect*/\
+				 (errno==ECONNABORTED)||/*posix: client disconnect*/\
+		 		 (errno==EPROTO)||/*svr4: client disconnect*/\
+				 (errno==EINTR) )
+					printf("ignore");
+				else{
+					perror("accept error");
+					exit(1);
+				}
+			}
 			for(i=0;i<FD_SETSIZE;++i){
 				if(client_fd[i]<0){
 					client_fd[i]=conn_fd;
@@ -135,6 +147,10 @@ void tcp_select_loop(int sock_fd)
 			if(FD_ISSET(client_fd[i],&rset)){
 			/*now get data from client*/
 				if(!echo_single_slect(client_fd[i])){	
+				/*this read/write way has 2 issue:
+				 *1:	program is block in read/write, so it is still not noblock
+				 *2:	client attack, client will send a char and hold whole server
+				 * */
 					close(client_fd[i]);
 					FD_CLR(client_fd[i],&allset);
 					client_fd[i]=-1;
@@ -146,10 +162,136 @@ void tcp_select_loop(int sock_fd)
 	}
 }
 
+/************************************************************************************************
+ *  absolute noblock version; include noblock read and write
+************************************************************************************************/
+#define MAX_EVENTS 1024
+#define MAXLINE 4096
+struct event_data{
+	char buf[MAXLINE];
+	int rptr;
+	int wptr;
+	int sock_fd;
+	int isClose;
+};
+
+
+void tcp_epoll_loop_noblock(int sock_fd)
+{
+	int listen_fd,conn_fd;
+	struct sockaddr_in cli_addr;
+	socklen_t clilen;
+	/*val used for epoll*/	
+	struct epoll_event ev,con_ev,events[20];
+	struct event_data data[20];
+
+	int epfd,nfds;
+	int i,j;
+
+	fcntl(sock_fd,F_SETFL,fcntl(sock_fd,F_GETFL)|O_NONBLOCK);/*Important!! make sure accept after select is noblock */
+	listen_fd=listen(sock_fd,1024);
+	if(listen_fd<0){
+			perror("listen error");
+			exit(1);
+	}
+	printf("Now start to wait for client\n");
+
+	epfd= epoll_create(MAX_EVENTS);
+	ev.data.fd=sock_fd;
+	ev.events=EPOLLIN|EPOLLET;
+
+	//register epoll event
+	epoll_ctl(epfd,EPOLL_CTL_ADD,sock_fd,&ev);
+
+	clilen=sizeof(cli_addr);
+
+	for(j=0;j<20;j++){
+		data[i].rptr=0;
+		data[i].wptr=0;
+		bzero(data[i].buf,MAXLINE);
+		data[i].sock_fd=-1;
+		data[i].isClose=0;
+	}
+
+	for(;;){
+		//wait epoll events happen
+		nfds=epoll_wait(epfd,events,20,500);	
+		//process all events
+		for(i=0;i<nfds;++i){
+			if(events[i].data.fd==sock_fd){/*accept a connect*/
+				conn_fd=accept(sock_fd,(SA *)&cli_addr,&clilen);	
+				if(conn_fd<0){
+					perror("accept error");
+					exit(1);
+				}
+				for(j=0;j<21;j++){
+					if(j==20){
+						printf("too many connection\n");
+						exit(1);
+					}
+					if(data[j].sock_fd==-1)
+						break;
+				}
+				con_ev.data.ptr=(void*)&data[j];
+				data[j].sock_fd=conn_fd;
+				con_ev.events=EPOLLIN|EPOLLET|EPOLLOUT;
+				epoll_ctl(epfd,EPOLL_CTL_ADD,conn_fd,&con_ev);
+			}
+			else if(events[i].events&EPOLLIN){/*get data from client*/
+				struct event_data *d=(struct event_data *)events[i].data.ptr;
+				int nbytes;
+				if((listen_fd=d->sock_fd)<0)
+					continue;
+				nbytes=read(listen_fd,&d->buf[d->rptr],MAXLINE-d->rptr);
+				if(nbytes==0){
+					/*client close*/
+					d->isClose=1;
+					events[i].events=EPOLLOUT|EPOLLET;
+					epoll_ctl(epfd,EPOLL_CTL_MOD,listen_fd,&events[i]);
+				}
+				else if(nbytes<0){
+					perror("read error");
+					exit(1);
+				}
+				else if(nbytes==MAXLINE-d->rptr){
+					d->rptr=0;
+				}
+				else{
+					d->rptr+=nbytes;
+				}
+			}
+			else if(events[i].events&EPOLLOUT){	/*send data to client*/
+				struct event_data *d=(struct event_data *)events[i].data.ptr;
+				int nbytes,wbytes;
+				if((listen_fd=d->sock_fd)<0)
+					continue;
+				wbytes=(d->wptr<d->rptr)?d->rptr-d->wptr:MAXLINE-d->wptr;
+				nbytes=write(listen_fd,&d->buf[d->wptr],wbytes);	
+				if(nbytes<=0){ /*write should not return 0, because we control close server connection*/
+					perror("write error");
+					exit(1);
+				}
+				d->wptr+=nbytes;
+				if(d->wptr==MAXLINE)
+					d->wptr=0;
+				if(d->wptr==d->rptr&&(d->isClose==1)){  /*When do read, we already find client close connection; Now is our turn*/
+					close(listen_fd);
+					epoll_ctl(epfd,EPOLL_CTL_DEL,listen_fd,&events[i]);
+					d->rptr=0;
+					d->wptr=0;
+					d->isClose=0;
+					d->sock_fd=-1;
+				}
+
+			}				
+		}
+	}
+}
+
+
 /****************************************************************************************************
  * 	epoll way is quit differnt, just start below
 ****************************************************************************************************/
-#define MAX_EVENTS 1024
 
 void tcp_epoll_loop(int sock_fd)
 {
@@ -157,7 +299,9 @@ void tcp_epoll_loop(int sock_fd)
 	struct sockaddr_in cli_addr;
 	socklen_t clilen;
 	/*val used for epoll*/	
-	int epfd;
+	struct epoll_event ev,events[20];
+
+	int epfd,nfds;
 	int i;
 
 	fcntl(sock_fd,F_SETFL,fcntl(sock_fd,F_GETFL)|O_NONBLOCK);/*Important!! make sure accept after select is noblock */
@@ -169,8 +313,44 @@ void tcp_epoll_loop(int sock_fd)
 	printf("Now start to wait for client\n");
 
 	epfd= epoll_create(MAX_EVENTS);
+	ev.data.fd=sock_fd;
+	ev.events=EPOLLIN|EPOLLET;
 
+	//register epoll event
+	epoll_ctl(epfd,EPOLL_CTL_ADD,sock_fd,&ev);
+
+	clilen=sizeof(cli_addr);
 	for(;;){
+		//wait epoll events happen
+		nfds=epoll_wait(epfd,events,20,500);	
+		//process all events
+		for(i=0;i<nfds;++i){
+			if(events[i].data.fd==sock_fd){/*accept a connect*/
+				conn_fd=accept(sock_fd,(SA *)&cli_addr,&clilen);	
+				if(conn_fd<0){
+					perror("accept error");
+					exit(1);
+				}
+				ev.data.fd=conn_fd;
+				ev.events=EPOLLIN|EPOLLET;
+				epoll_ctl(epfd,EPOLL_CTL_ADD,conn_fd,&ev);
+			}
+			else if(events[i].events&EPOLLIN){/*get data from client*/
+				if((listen_fd=events[i].data.fd)<0)
+					continue;
+				if(!echo_single_slect(listen_fd)){	
+				/*this read/write way has 2 issue:
+				 *1:	program is block in read/write, so it is still not noblock
+				 *2:	client attack, client will send a char and hold whole server
+				 * */
+					close(listen_fd);
+					events[i].data.fd=-1;
+				}
+				ev.data.fd=listen_fd;
+				ev.events=EPOLLIN|EPOLLET;
+				epoll_ctl(epfd,EPOLL_CTL_DEL,listen_fd,&ev);
+			}
+		}
 	}
 }
 

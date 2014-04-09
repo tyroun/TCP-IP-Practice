@@ -39,6 +39,8 @@ struct net_operation *parse_option(int argc,char **argv);
 void tcp_base_loop(int sock_fd);
 int tcp_init(short port);
 void tcp_select_loop(int sock_fd);
+void tcp_epoll_loop_noblock(int sock_fd);
+void tcp_epoll_loop(int sock_fd);
 
 
 void udp_base_loop(int sock_fd);
