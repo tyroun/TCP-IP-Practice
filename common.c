@@ -75,6 +75,7 @@ struct net_operation *parse_option(int argc,char **argv)
 				op.mainloop=tcp_epoll_loop;
 				break;
 			case 'U':
+				op.mainloop=tcp_epoll_loop_noblock;
 				break;		
 			case 'S':
 				break;		

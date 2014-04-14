@@ -198,7 +198,7 @@ void tcp_epoll_loop_noblock(int sock_fd)
 
 	epfd= epoll_create(MAX_EVENTS);
 	ev.data.fd=sock_fd;
-	ev.events=EPOLLIN|EPOLLET;
+	ev.events=EPOLLIN;
 
 	//register epoll event
 	epoll_ctl(epfd,EPOLL_CTL_ADD,sock_fd,&ev);
@@ -206,11 +206,11 @@ void tcp_epoll_loop_noblock(int sock_fd)
 	clilen=sizeof(cli_addr);
 
 	for(j=0;j<20;j++){
-		data[i].rptr=0;
-		data[i].wptr=0;
-		bzero(data[i].buf,MAXLINE);
-		data[i].sock_fd=-1;
-		data[i].isClose=0;
+		data[j].rptr=0;
+		data[j].wptr=0;
+		bzero(data[j].buf,MAXLINE);
+		data[j].sock_fd=-1;
+		data[j].isClose=0;
 	}
 
 	for(;;){
@@ -234,8 +234,9 @@ void tcp_epoll_loop_noblock(int sock_fd)
 				}
 				con_ev.data.ptr=(void*)&data[j];
 				data[j].sock_fd=conn_fd;
-				con_ev.events=EPOLLIN|EPOLLET|EPOLLOUT;
+				con_ev.events=EPOLLIN|EPOLLOUT;
 				epoll_ctl(epfd,EPOLL_CTL_ADD,conn_fd,&con_ev);
+				fcntl(conn_fd,F_SETFL,fcntl(conn_fd,F_GETFL)|O_NONBLOCK);
 			}
 			else if(events[i].events&EPOLLIN){/*get data from client*/
 				struct event_data *d=(struct event_data *)events[i].data.ptr;
@@ -246,7 +247,7 @@ void tcp_epoll_loop_noblock(int sock_fd)
 				if(nbytes==0){
 					/*client close*/
 					d->isClose=1;
-					events[i].events=EPOLLOUT|EPOLLET;
+					events[i].events=EPOLLOUT;
 					epoll_ctl(epfd,EPOLL_CTL_MOD,listen_fd,&events[i]);
 				}
 				else if(nbytes<0){
@@ -305,7 +306,7 @@ void tcp_epoll_loop(int sock_fd)
 	int i;
 
 	fcntl(sock_fd,F_SETFL,fcntl(sock_fd,F_GETFL)|O_NONBLOCK);/*Important!! make sure accept after select is noblock */
-	listen_fd=listen(sock_fd,1024);
+	listen_fd=listen(sock_fd,500);
 	if(listen_fd<0){
 			perror("listen error");
 			exit(1);
@@ -314,7 +315,7 @@ void tcp_epoll_loop(int sock_fd)
 
 	epfd= epoll_create(MAX_EVENTS);
 	ev.data.fd=sock_fd;
-	ev.events=EPOLLIN|EPOLLET;
+	ev.events=EPOLLIN;
 
 	//register epoll event
 	epoll_ctl(epfd,EPOLL_CTL_ADD,sock_fd,&ev);
@@ -332,7 +333,7 @@ void tcp_epoll_loop(int sock_fd)
 					exit(1);
 				}
 				ev.data.fd=conn_fd;
-				ev.events=EPOLLIN|EPOLLET;
+				ev.events=EPOLLIN;
 				epoll_ctl(epfd,EPOLL_CTL_ADD,conn_fd,&ev);
 			}
 			else if(events[i].events&EPOLLIN){/*get data from client*/
@@ -345,10 +346,10 @@ void tcp_epoll_loop(int sock_fd)
 				 * */
 					close(listen_fd);
 					events[i].data.fd=-1;
+					ev.data.fd=listen_fd;
+					ev.events=EPOLLIN;
+					epoll_ctl(epfd,EPOLL_CTL_DEL,listen_fd,&ev);
 				}
-				ev.data.fd=listen_fd;
-				ev.events=EPOLLIN|EPOLLET;
-				epoll_ctl(epfd,EPOLL_CTL_DEL,listen_fd,&ev);
 			}
 		}
 	}
